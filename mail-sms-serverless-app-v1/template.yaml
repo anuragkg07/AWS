@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  sms-mail-app
+
+  Sample SAM Template for sms-mail-app
+  
+
+Parameters:
+  StageParameter:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
+    Description: Enter dev, test, or prod. Default is dev.
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 20
+
+Resources:
+  EmailApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: Email Api Gateway
+      StageName: 
+        Ref: StageParameter
+      EndpointConfiguration:
+        Type: REGIONAL
+     
+  MessageCommunicationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+        TopicName: "MessageCommunicationTopic"
+    
+  MessageCommunicationAppFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: MessageCommunicationAppFunction
+      Handler: com.akg.MessageCommunicationApp::handleRequest
+      Runtime: java8
+      MemorySize: 512
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          SNS_TOPIC_ARN: !Ref MessageCommunicationTopic
+      Policies: AmazonSNSFullAccess
+      Events:
+        MailApp:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            RestApiId: !Ref EmailApiGateway
+            Path: /send
+            Method: post
+    
+  ProcessMailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ProcessMailFunction
+      Handler: com.akg.ProcessMailApp::handleRequest
+      Runtime: java8
+      MemorySize: 512
+      Events:
+        EmailSNSEvent:
+            Type: SNS
+            Properties:
+                Topic: !Ref MessageCommunicationTopic
+                FilterPolicy:
+                    msgType:
+                        - EMAIL
+
+            
+  ProcessSMSFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ProcessSMSFunction
+      Handler: com.akg.ProcessSMSApp::handleRequest
+      Runtime: java8
+      MemorySize: 512
+      Events:
+        SmsSNSEvent:
+            Type: SNS
+            Properties:
+                Topic: !Ref MessageCommunicationTopic
+                FilterPolicy:
+                    msgType:
+                        - SMS
+
+
+Outputs:
+  MessageCommunicationAppFunction:
+    Description: "Hello World Lambda Function ARN"
+    Value: !GetAtt MessageCommunicationAppFunction.Arn
+
+
